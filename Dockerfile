@@ -24,4 +24,5 @@ COPY --from=frontend /app/dist /app/frontend_dist
 EXPOSE 8000
 CMD sh -c "python manage.py migrate --noinput && \
            python manage.py collectstatic --noinput && \
+           python manage.py ensure_default_user && \
            gunicorn config.wsgi:application --bind 0.0.0.0:\$PORT --workers 2 --access-logfile -"
