@@ -10,3 +10,6 @@ node_modules/
 .DS_Store
 *.sqlite3
 media/
+frontend/dist/
+backend/frontend_dist/
+backend/staticfiles/

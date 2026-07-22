@@ -1,67 +1,37 @@
 # Recibo Fácil
 
-Sistema para gestão de empréstimos particulares com controle de parcelas, pagamentos e recibos digitais com assinatura eletrônica e hash de integridade.
+Sistema para gestão de empréstimos particulares com controle de parcelas,
+pagamentos e recibos digitais com assinatura eletrônica e hash de integridade.
 
-## Problema
+- **Produção:** https://recibofacil.onrender.com
+- **Repositório:** https://github.com/DiasHelton/recibofacil
 
-Empréstimos informais entre pessoas físicas carecem de registros confiáveis. O Recibo Fácil resolve isso com:
-
-- Rastreamento de parcelas e vencimentos
-- Fluxo de pagamento em duas etapas (devedor paga, credor confirma)
-- Recibos digitais com hash SHA-256 e assinatura eletrônica por senha
-- Trilha de auditoria de todas as operações
-- Dashboard com visão consolidada para credor e devedor
+---
 
 ## Stack
 
-| Camada | Tecnologia |
-|--------|-----------|
-| Frontend | React 19, TypeScript, Vite, React Router 7, Lucide React |
-| Backend | Python 3.12, Django 5, Django REST Framework, SimpleJWT |
-| Banco | PostgreSQL 16 |
-| Infra | Docker Compose |
-| Autenticação | JWT (Bearer + query param) |
+| Camada     | Tecnologia                                              |
+| ---------- | ------------------------------------------------------- |
+| Frontend   | React 19, TypeScript, Vite, React Router 7, Lucide     |
+| Backend    | Python 3.12, Django 5, DRF, SimpleJWT, Gunicorn        |
+| Banco      | PostgreSQL 16 (Neon.tech — grátis, sem expiração)       |
+| Infra      | Docker Compose (dev), Render (prod)                     |
+| Autenticação | JWT (Bearer + query param)                           |
 
-## Funcionalidades
+---
 
-- Cadastro/login por email + senha
-- Criação de empréstimos com valor, juros, número de parcelas
-- Acompanhamento de parcelas pendentes, pagas e vencidas
-- Pagamento em duas etapas: devedor registra o pagamento (com senha), credor confirma (com senha)
-- Recibos digitais gerados automaticamente após confirmação
-- Hash SHA-256 de integridade no recibo
-- Visualização do recibo em HTML (pronto para impressão)
-- Dashboard com indicadores para credor e devedor
-- Design responsivo (desktop e mobile)
-- Trilha de auditoria completa
+## Desenvolvimento local
 
-## Modelo de dados
+### Pré-requisitos
 
-```
-User (email, name, phone)
-  │
-  ├── Loan (creditor, debtor, amount, interest, installments, status)
-  │     │
-  │     └── Installment (number, due_date, amount, status)
-  │           │
-  │           └── Payment (amount, method, date, confirmed, confirmed_at, recorded_by)
-  │                 │
-  │                 └── Receipt (number UUID, document_hash SHA-256, status)
-  │                       │
-  │                       └── Signature (user, signed_at)
-  │
-  ├── Notification (title, message, read_at)
-  └── AuditLog (action, entity, entity_id, ip, user_agent)
-```
+- Docker e Docker Compose
+- Node.js 22+ (para build do frontend)
 
-## Como executar
+### Executar
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/DiasHelton/recibofacil.git
 cd recibofacil
-
-# Criar arquivo de ambiente (opcional)
-cp .env.example .env
 
 # Iniciar tudo
 docker compose up --build
@@ -69,20 +39,168 @@ docker compose up --build
 
 Acessar:
 
-- **Aplicação**: http://localhost:8000 (servida pelo Django, SPA)
-- **Admin Django**: http://localhost:8000/admin/
-- **API**: http://localhost:8000/api/
-- **Frontend em dev**: http://localhost:5173 (hot reload, Vite)
+| URL                               | O quê                     |
+| --------------------------------- | ------------------------- |
+| http://localhost:5173             | Frontend (Vite, hot reload) |
+| http://localhost:8000             | Frontend + API (Django SPA) |
+| http://localhost:8000/api/        | API REST                  |
+| http://localhost:8000/admin/      | Admin Django              |
 
-### Primeiro acesso
+### Primeiro uso
 
-Sem superusuario, acesse http://localhost:8000 e clique em **Cadastre-se** para criar uma conta.
-
-Para admin:
+Acesse http://localhost:8000 e clique em **Cadastre-se** para criar o primeiro
+usuário. Ou via API:
 
 ```bash
-docker compose exec api python manage.py createsuperuser
+curl -X POST http://localhost:8000/api/auth/register/ \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Seu Nome","email":"seu@email.com","password":"suasenha"}'
 ```
+
+### Comandos úteis
+
+```bash
+# Acessar o shell do Django
+docker compose exec api python manage.py shell
+
+# Criar superusuário (admin)
+docker compose exec api python manage.py createsuperuser
+
+# Ver logs
+docker compose logs -f api
+
+# Resetar banco local
+docker compose down -v && docker compose up --build
+```
+
+---
+
+## Produção (Render + Neon)
+
+### Arquitetura
+
+```
+Usuário ──► https://recibofacil.onrender.com
+                  │
+          ┌───────┴───────┐
+          │   Render      │
+          │  (Docker)     │
+          │               │
+          │  Gunicorn     │
+          │  Django SPA   │
+          │  Whitenoise   │
+          └───────┬───────┘
+                  │
+          ┌───────┴───────┐
+          │  Neon.tech    │
+          │  PostgreSQL16 │
+          └───────────────┘
+```
+
+### Serviços gratuitos utilizados
+
+| Serviço  | Plano | Limites                          |
+| -------- | ----- | -------------------------------- |
+| Render   | Free  | 512 MB RAM, dormência após 15 min |
+| Neon     | Free  | 500 MB, branch, SQL Editor       |
+| GitHub   | Free  | Repositório público              |
+
+> O Render "dorme" após 15 min sem uso. O primeiro acesso após período
+> ocioso leva ~30 segundos para reativar.
+
+### Como foi feito o deploy
+
+1. Repositório GitHub conectado ao Render
+2. Build via `Dockerfile` multi-stage (compila frontend + backend)
+3. Banco PostgreSQL na Neon, conectado via `DATABASE_URL`
+4. Migrations rodam automaticamente na inicialização
+5. Gunicorn serve a aplicação na porta `$PORT` (definida pelo Render)
+
+### Variáveis de ambiente (Render)
+
+| Variável         | Valor                                            |
+| ---------------- | ------------------------------------------------ |
+| `DATABASE_URL`   | `postgresql://...` (fornecido pela Neon)         |
+| `DJANGO_SECRET_KEY` | `chamanabota`                                |
+| `ALLOWED_HOSTS`  | `.onrender.com`                                  |
+| `DEBUG`          | `0`                                              |
+
+---
+
+## Manutenção
+
+### Backup do banco
+
+A Neon mantém backups automáticos por 7 dias. Para exportar manualmente:
+
+1. Acesse [console.neon.tech](https://console.neon.tech)
+2. Selecione o projeto → **Branch** → `main`
+3. Clique em **Generate credentials** e copie a string
+4. Rode localmente:
+
+```bash
+pg_dump --no-owner --no-acl "$DATABASE_URL" > backup_$(date +%Y%m%d).sql
+```
+
+### Resetar o banco
+
+**Cuidado:** isso apaga todos os dados.
+
+1. Acesse o **SQL Editor** da Neon
+2. Execute:
+
+```sql
+DROP SCHEMA public CASCADE; CREATE SCHEMA public;
+```
+
+3. No Render, clique em **Manual Deploy → Deploy latest commit**
+   (as migrations rodarão e recriarão as tabelas vazias)
+
+### Atualizar o sistema
+
+```bash
+# Local: puxar alterações e rebuildar
+git pull
+docker compose up --build
+
+# Produção: push para o GitHub faz deploy automático no Render
+git add .
+git commit -m "descrição das alterações"
+git push origin main
+```
+
+### Acessar o banco remoto via terminal
+
+```bash
+# Instalar psql (macOS)
+brew install libpq
+
+# Conectar
+psql "$DATABASE_URL"
+```
+
+### Rodar comandos Django no banco remoto
+
+Usando o Docker local com a DATABASE_URL da Neon:
+
+```bash
+docker run --rm -e DATABASE_URL="$DATABASE_URL" \
+  -e DJANGO_SECRET_KEY=chamanabota \
+  recibofacil-test \
+  python manage.py shell
+```
+
+Ou crie um alias no `~/.zshrc`:
+
+```bash
+alias recibofacil-shell='docker run --rm -it \
+  -e DATABASE_URL="postgresql://..." \
+  -e DJANGO_SECRET_KEY=chamanabota \
+  recibofacil-test \
+  python manage.py shell'
+```
+
+---
 
 ## API
 
@@ -96,98 +214,94 @@ docker compose exec api python manage.py createsuperuser
 | GET/POST | `/api/loans/` | JWT | Listar/criar empréstimos |
 | GET/PUT/PATCH/DELETE | `/api/loans/{id}/` | JWT | Detalhe do empréstimo |
 | POST | `/api/loans/{id}/pay/` | JWT | Devedor paga parcela (com senha) |
-| POST | `/api/loans/{id}/confirm_payment/{payment_id}/` | JWT | Credor confirma pagamento (com senha) |
+| POST | `/api/loans/{id}/confirm_payment/{payment_id}/` | JWT | Credor confirma (com senha) |
 | GET | `/api/payments/` | JWT | Listar pagamentos |
 | GET | `/api/receipts/` | JWT | Listar recibos |
 | POST | `/api/receipts/{id}/sign/` | JWT | Assinar recibo (com senha) |
 | GET | `/api/receipts/{id}/document/` | JWT | Visualizar recibo HTML |
 | POST | `/api/receipts/{id}/cancel/` | JWT | Cancelar recibo |
 
-### Autenticação
+Autenticação via header `Authorization: Bearer <token>` ou query param
+`?token=<token>` (usado em links de recibos).
 
-O token JWT é enviado via:
+---
 
-- Header: `Authorization: Bearer <token>`
-- Query param: `?token=<token>` (usado em links compartilháveis como o documento do recibo)
+## Fluxo de pagamento
+
+1. **Devedor** acessa o empréstimo → clica em "Pagar" → informa valor, data,
+   método e **sua senha**
+2. Sistema registra o pagamento como **não confirmado** e cria rascunho de
+   recibo
+3. **Credor** acessa o mesmo empréstimo → vê o pagamento pendente → clica em
+   "Confirmar" → informa **sua senha**
+4. Sistema confirma o pagamento, gera as assinaturas digitais e finaliza o
+   recibo com hash SHA-256
+5. Ambas as partes podem visualizar o recibo (hash de integridade incluso)
+
+---
 
 ## Estrutura do projeto
 
 ```
 recibofacil/
-├── docker-compose.yml
-├── .env.example
-├── .gitignore
+├── Dockerfile           # Multi-stage (frontend + backend)
+├── docker-compose.yml   # Dev local (PostgreSQL + API + Vite)
+├── render.yaml          # Config do Render (deploy automático)
+├── fly.toml             # (opcional) Config Fly.io
+├── .env.example         # Variáveis de ambiente de referência
 ├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── manage.py
 │   ├── config/
-│   │   ├── settings.py
-│   │   └── urls.py
+│   │   ├── settings.py  # Django settings (single file)
+│   │   └── urls.py      # URL conf (api/ + SPA catch-all)
 │   └── core/
-│       ├── models/          (loan, payment, receipt, user, audit, notification)
-│       ├── views/           (loans, payments, receipts, dashboard, auth, spa)
-│       ├── serializers/
-│       ├── services/        (receipt HTML, audit log)
+│       ├── models/      # user, loan, payment, receipt, audit...
+│       ├── views/       # loans, payments, receipts, dashboard, auth
+│       ├── serializers/ # DRF serializers
+│       ├── services/    # receipt HTML, audit log
 │       ├── authentication.py
+│       ├── management/  # Custom commands (ensure_default_user)
 │       └── migrations/
 └── frontend/
-    ├── Dockerfile
-    ├── package.json
-    ├── index.html
-    └── src/
-        ├── main.tsx
-        ├── App.tsx
-        ├── style.css
-        ├── api/             (client, auth, loans, receipts)
-        ├── components/      (Auth, Layout, Dashboard, ErrorBoundary)
-        ├── pages/           (Dashboard, Loans, LoanDetail, NewLoan, Receipts)
-        └── hooks/           (useAuth)
+    ├── vite.config.ts   # Proxy /api para backend no dev
+    ├── src/
+    │   ├── api/         # client.ts, auth.ts, loans.ts...
+    │   ├── components/  # Sidebar, LoginForm, Cards...
+    │   └── pages/       # Dashboard, Loans, Receipts...
+    └── package.json
 ```
 
-## Fluxo de pagamento
+---
 
-1. **Devedor** acessa o empréstimo, clica em "Pagar", informa valor, data, método e **sua senha**
-2. Sistema registra o pagamento como **não confirmado** e cria um rascunho de recibo
-3. **Credor** acessa o mesmo empréstimo, vê o pagamento pendente de confirmação, clica em "Confirmar" e informa **sua senha**
-4. Sistema confirma o pagamento, gera as assinaturas digitais e finaliza o recibo com hash SHA-256
-5. Ambas as partes podem visualizar o recibo com hash de integridade
+## Arquitetura e decisões técnicas
 
-## Arquitetura
-
-### Decisões técnicas
-
-- **Settings em arquivo único**: Para MVP, sem split `base/production`. Segredos via variáveis de ambiente.
-- **JWT stateless**: Sem sessões no servidor. Token via header ou query param.
-- **Recibos em HTML**: Sem geração/armazenamento de PDF. O HTML inclui hash SHA-256 e botão de impressão.
-- **Assinatura por senha**: Usuário confirma ações informando a própria senha. Sem upload de imagem de assinatura.
-- **Hash de integridade**: SHA-256 calculado sobre os dados do recibo (número, valor, data, partes).
-- **Package-by-domain**: Models, views e serializers organizados por domínio (não arquivos monolíticos).
+- **Settings single file** — sem split ambiente; segredos via env vars
+- **JWT stateless** — sem sessões no servidor
+- **Recibos em HTML** — sem geração de PDF; inclui hash SHA-256 e
+  impressão via CSS `@media print`
+- **Assinatura por senha** — usuário confirma ações com a própria senha
+  (sem upload de imagem)
+- **Package-by-domain** — models, views e serializers separados por domínio
+- **QueryParamTokenAuthentication** — aceita JWT via `?token=` para
+  links compartilháveis de recibos
+- **Whitenoise** — serve arquivos estáticos do Django admin em produção
+- **Vite proxy** — no dev, `/api` é redirecionado para o Django
 
 ### Segurança
 
-- Senhas nunca são armazenadas em texto plano (Django PBKDF2)
-- JWT com expiração (access: 5 min, refresh: 24 h)
-- Todas as rotas (exceto registro/login) exigem autenticação
-- Operações sensíveis (pagar, confirmar, assinar) exigem senha do usuário
-- Pagamento só é finalizado após confirmação do credor
+- Senhas com PBKDF2 (Django padrão)
+- JWT expira em 5 min (access) / 24 h (refresh)
+- Todas as rotas exigem JWT (exceto registro e login)
+- Pagar, confirmar e assinar exigem senha do usuário logado
+- Pagamento só é finalizado após credor confirmar
 
-## Produção
+---
 
-Para ambiente de produção:
+## Solução de problemas
 
-```bash
-# Ajustar .env
-DJANGO_SECRET_KEY=<chave-aleatoria-forte>
-DEBUG=0
-DATABASE_URL=postgres://user:pass@host:5432/recibofacil
-
-# Construir frontend e copiar para o backend
-cd frontend && npm install && npm run build
-cp -r dist ../backend/frontend_dist
-
-# Iniciar sem Vite (apenas API serve o frontend)
-docker compose up -d db api
-```
-
-O backend serve tanto a API (`/api/`) quanto os assets estáticos e o SPA (`/`), eliminando a necessidade de um servidor web separado em deployments simples.
+| Problema | Causa | Solução |
+|----------|-------|---------|
+| Render retorna 502 | Banco inacessível | Verificar `DATABASE_URL` no Render |
+| Login retorna "usuário não encontrado" | Banco vazio | Fazer cadastro |
+| App lento no primeiro acesso | Render "dormiu" | Aguardar ~30s, recarregar |
+| `docker compose` falha | Porta ocupada | `kill $(lsof -ti:8000)` |
+| Migrations pendentes | Código novo | `docker compose exec api python manage.py migrate` |
